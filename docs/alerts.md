@@ -20,41 +20,51 @@ Ví dụ dưới đây minh họa mức độ cụ thể cần có. Học viên 
 - Mitigation tạm thời: dựa trên evidence thực tế để rollback prompt, khôi phục cấu hình liên quan, tắt practice scenario hoặc giảm tải khi demo.
 - Owner: `student-<MSSV>`
 
-## Alert 1
+## Alert 1 — high_latency_p95 {#high-latency-p95}
 
-- Tên:
-- Severity:
-- Duration:
-- Kênh thông báo: Slack
-- SLI/SLO liên quan:
-- Điều kiện và thời gian duy trì:
-- Ảnh hưởng tới người dùng:
+- Tên: `high_latency_p95`
+- Severity: warning
+- Duration: 5m
+- Kênh thông báo: Slack `#day13-oncall`
+- SLI/SLO liên quan: latency P95 của `response_sent.latency_ms` vs SLO 3000ms
+- Điều kiện và thời gian duy trì: `p95(latency_ms) > 3000ms` liên tục trong 5 phút
+- Ảnh hưởng tới người dùng: người dùng phải chờ lâu hơn SLO, trải nghiệm giảm với feature `qa`.
 - Ba bước kiểm tra đầu tiên:
-- Mitigation tạm thời:
-- Owner:
+  1. Mở dashboard panel **Latency** → xác nhận P95/P99 cao và thời điểm bắt đầu.
+  2. Lọc `data/logs.jsonl` với `event == "response_sent" and latency_ms > 3000`, lấy một `correlation_id`.
+  3. Mở trace cùng `correlation_id` trên Langfuse → so sánh span `retrieval` và `generation` tìm bước chậm.
+- Mitigation tạm thời: nếu `retrieval` chậm → tắt incident `rag_slow`; nếu `generation` chậm → rollback prompt trên Langfuse.
+- Owner: `student-2A202602826`
 
-## Alert 2
+## Alert 2 — elevated_error_rate {#elevated-error-rate}
 
-- Tên:
-- Severity:
-- Duration:
-- Kênh thông báo: Slack
-- SLI/SLO liên quan:
-- Điều kiện và thời gian duy trì:
-- Ảnh hưởng tới người dùng:
+- Tên: `elevated_error_rate`
+- Severity: critical
+- Duration: 3m
+- Kênh thông báo: Slack `#day13-oncall`
+- SLI/SLO liên quan: error budget SLO `fast_successful_requests`; guardrail `error_rate_pct_max: 2`
+- Điều kiện và thời gian duy trì: `error_rate_pct > 2%` liên tục trong 3 phút
+- Ảnh hưởng tới người dùng: người dùng nhận HTTP 500, không nhận câu trả lời.
 - Ba bước kiểm tra đầu tiên:
-- Mitigation tạm thời:
-- Owner:
+  1. Mở dashboard panel **Errors** → xác nhận `error_rate_pct` và loại lỗi phổ biến nhất.
+  2. Lọc `data/logs.jsonl` với `event == "request_failed"`, lấy `correlation_id` và `error_type`.
+  3. Mở trace cùng `correlation_id` trên Langfuse → xem span nào có status ERROR.
+- Mitigation tạm thời: nếu lỗi từ retrieval → tắt incident `tool_fail`; nếu từ LLM → rollback prompt.
+- Owner: `student-2A202602826`
 
-## Alert 3
+## Alert 3 — low_retrieval_success {#low-retrieval-success}
 
-- Tên:
-- Severity:
-- Duration:
-- Kênh thông báo: Slack
-- SLI/SLO liên quan:
-- Điều kiện và thời gian duy trì:
-- Ảnh hưởng tới người dùng:
+- Tên: `low_retrieval_success`
+- Severity: warning
+- Duration: 5m
+- Kênh thông báo: Slack `#day13-oncall`
+- SLI/SLO liên quan: guardrail `retrieval_success_rate_pct_min: 90`
+- Điều kiện và thời gian duy trì: `tool_success_rate_pct < 90%` liên tục trong 5 phút
+- Ảnh hưởng tới người dùng: RAG không tìm được context → câu trả lời chất lượng thấp, `quality_score` giảm.
 - Ba bước kiểm tra đầu tiên:
-- Mitigation tạm thời:
-- Owner:
+  1. Mở dashboard panel **Errors** → xác nhận `tool_success_rate_pct` thấp.
+  2. Lọc `data/logs.jsonl` với `tool_name == "retrieval" and tool_success == false`, lấy `correlation_id`.
+  3. Mở trace cùng `correlation_id` trên Langfuse → xem span `retrieval` có input bất thường không.
+- Mitigation tạm thời: tắt incident `rag_slow` nếu đang bật; kiểm tra query trong span có chứa ký tự lạ.
+- Owner: `student-2A202602826`
+

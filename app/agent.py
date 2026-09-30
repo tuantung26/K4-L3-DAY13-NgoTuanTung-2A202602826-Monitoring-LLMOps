@@ -51,7 +51,15 @@ class LabAgent:
             },
         ):
             started = time.perf_counter()
-            docs = retrieve(message)
+            # CP2: retrieval child span
+            with langfuse_client.start_as_current_observation(
+                name="retrieval",
+                as_type="retriever",
+                input={"query_preview": summarize_text(message)},
+            ) as retrieval_obs:
+                docs = retrieve(message)
+                retrieval_obs.update(output={"doc_count": len(docs), "success": True})
+
             prompt = resolve_prompt(
                 langfuse_client,
                 feature=feature,
@@ -71,10 +79,28 @@ class LabAgent:
                 },
                 version=prompt.version,
             )
-            # TODO (CP2): instrument retrieve() and FakeLLM.generate() as child
-            # observations. The nested generation must receive prompt, usage and cost.
-            with propagate_attributes(prompt=prompt.managed_prompt):
-                response = self.llm.generate(prompt.text)
+            # CP2: LLM generation child observation
+            with langfuse_client.start_as_current_observation(
+                name="generation",
+                as_type="generation",
+                model=self.model,
+                input=summarize_text(prompt.text, max_len=200),
+                metadata={
+                    "prompt_name": prompt.name,
+                    "prompt_version": prompt.version,
+                },
+            ) as gen_obs:
+                with propagate_attributes(prompt=prompt.managed_prompt):
+                    response = self.llm.generate(prompt.text)
+                gen_obs.update(
+                    output=summarize_text(response.text, max_len=200),
+                    usage_details={
+                        "input": response.usage.input_tokens,
+                        "output": response.usage.output_tokens,
+                        "total": response.usage.input_tokens + response.usage.output_tokens,
+                    },
+                    metadata={"ttft_ms": response.ttft_ms},
+                )
             quality_score = self._heuristic_quality(message, response.text, docs)
             latency_ms = int((time.perf_counter() - started) * 1000)
             cost_usd = self._estimate_cost(response.usage.input_tokens, response.usage.output_tokens)

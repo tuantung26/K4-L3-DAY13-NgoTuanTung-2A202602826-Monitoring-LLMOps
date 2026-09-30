@@ -16,6 +16,18 @@ class ManagedPrompt:
         )
 
 
+class _NoOpObservation:
+    """Stub observation returned by start_as_current_observation."""
+    def update(self, **kwargs) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
 class RecordingLangfuseClient:
     def __init__(self) -> None:
         self.prompt = ManagedPrompt()
@@ -26,6 +38,10 @@ class RecordingLangfuseClient:
 
     def update_current_span(self, **kwargs) -> None:
         self.span_updates.append(kwargs)
+
+    def start_as_current_observation(self, **kwargs):
+        """Stub for CP2 child observations (retrieval + generation)."""
+        return _NoOpObservation()
 
 
 def test_agent_records_prompt_version_with_v4_observation_api(monkeypatch) -> None:
